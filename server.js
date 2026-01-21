@@ -12,10 +12,15 @@ const app = express();
 const server = http.createServer(app);
 
 // ================= MIDDLEWARE =================
+// app.use(cors({
+//     origin: "http://localhost:5173",
+//     credentials: true,
+// }));
 app.use(cors({
-    origin: "http://localhost:5173",
+    origin: true,
     credentials: true,
 }));
+
 app.use(express.json());
 
 // ================= ROUTES =================
@@ -31,12 +36,19 @@ mongoose.connect(process.env.MONGO_URI)
     .catch(err => console.error("MongoDB error:", err));
 
 // ================= SOCKET.IO =================
+// const io = new Server(server, {
+//     cors: {
+//         origin: "http://localhost:5173",
+//         credentials: true,
+//     },
+// });
 const io = new Server(server, {
     cors: {
-        origin: "http://localhost:5173",
+        origin: true,
         credentials: true,
     },
 });
+
 
 let waitingSocket = null;
 
@@ -56,7 +68,7 @@ io.on("connection", (socket) => {
     });
     //   /---/
 
-    
+
     socket.on("start", () => {
         if (waitingSocket && waitingSocket.id !== socket.id) {
             const roomId = `room-${waitingSocket.id}-${socket.id}`;
