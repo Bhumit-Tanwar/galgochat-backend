@@ -1,10 +1,14 @@
 import crypto from "crypto";
 import User from "../models/User.js";
 import { generateOTP } from "../utils/otp.js";
-import { sendOTPEmail } from "../utils/mail.js";
+import { sendOTPEmail } from "../utils/brevoMailer.js"; // 🔥 UPDATED
 import { generateUsername } from "../utils/username.js";
 
-// In-memory OTP store (later Redis)
+// =========================
+// In-memory OTP store
+// Structure:
+// email -> { otp, expiresAt }
+// =========================
 const otpStore = new Map();
 
 /**
@@ -23,16 +27,21 @@ export const sendOTP = async (req, res) => {
         }
 
         const otp = generateOTP();
-        otpStore.set(email, otp);
 
-        // 🔍 DEV ONLY (remove in production)
+        // Save OTP with expiry (5 minutes)
+        otpStore.set(email, {
+            otp,
+            expiresAt: Date.now() + 5 * 60 * 1000,
+        });
+
+        // ❌ REMOVE THIS IN REAL PRODUCTION
         console.log("OTP for", email, ":", otp);
 
         await sendOTPEmail(email, otp);
 
         res.json({ message: "OTP sent successfully" });
     } catch (error) {
-        console.error("Send OTP error:", error);
+        console.error("Send OTP error:", error.message);
         res.status(500).json({ message: "OTP error" });
     }
 };
@@ -46,10 +55,25 @@ export const verifyOTP = async (req, res) => {
     try {
         const { email, otp } = req.body;
 
-        if (!otpStore.has(email) || otpStore.get(email) !== otp) {
+        const record = otpStore.get(email);
+
+        if (!record) {
+            return res.status(401).json({ message: "OTP expired or not found" });
+        }
+
+        if (Date.now() > record.expiresAt) {
+            otpStore.delete(email);
+            return res.status(401).json({ message: "OTP expired" });
+        }
+
+        if (record.otp !== otp) {
             return res.status(401).json({ message: "Invalid OTP" });
         }
 
+        // OTP verified → delete
+        otpStore.delete(email);
+
+        // Hash email for privacy
         const emailHash = crypto
             .createHash("sha256")
             .update(email)
@@ -64,14 +88,12 @@ export const verifyOTP = async (req, res) => {
             });
         }
 
-        otpStore.delete(email);
-
         res.json({
             message: "OTP verified",
             username: user.username,
         });
     } catch (error) {
-        console.error("Verify OTP error:", error);
+        console.error("Verify OTP error:", error.message);
         res.status(500).json({ message: "Verification error" });
     }
 };
